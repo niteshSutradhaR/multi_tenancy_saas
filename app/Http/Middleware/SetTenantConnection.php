@@ -10,40 +10,24 @@ class SetTenantConnection
 {
     public function handle($request, Closure $next)
     {
-        // Get tenant ID from session
-        $tenantId = session('tenant_id');
+        $user = Auth::user();
 
-        if (!$tenantId) {
-            return response()->json(['error' => 'Tenant not identified'], 403);
+        // Ensure the user is authenticated and has a tenant
+        if ($user && $user->tenant) {
+            $tenant = $user->tenant;
+
+            // Dynamically set the tenant database connection
+            Config::set('database.connections.tenant.database', $tenant->db_name);
+            Config::set('database.connections.tenant.username', $tenant->db_username);
+            Config::set('database.connections.tenant.password', decrypt($tenant->db_password));
+
+            // Switch to tenant connection
+            DB::setDefaultConnection('tenant');
+
+            return $next($request);
         }
 
-        // Fetch tenant details
-        $tenant = Tenant::find($tenantId);
-
-        if (!$tenant) {
-            return response()->json(['error' => 'Tenant not found'], 404);
-        }
-
-        // Set the database connection dynamically (optional)
-        config([
-            'database.connections.tenant' => [
-                'driver' => 'mysql',
-                'host' => env('DB_HOST', '127.0.0.1'),
-                'port' => env('DB_PORT', '3306'),
-                'database' => env('DB_DATABASE'),
-                'username' => $tenant->db_username,
-                'password' => decrypt($tenant->db_password),
-                'charset' => 'utf8mb4',
-                'collation' => 'utf8mb4_unicode_ci',
-                'prefix' => '',
-                'strict' => true,
-            ],
-        ]);
-
-        // Switch to tenant connection
-        DB::setDefaultConnection('tenant');
-
-        return $next($request);
+        return response()->json(['error' => 'Tenant not found'], 403);
     }
 }
 
